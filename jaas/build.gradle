@@ -47,8 +47,6 @@ dependencies {
     // Ghidra
     compileOnly fileTree(dir: ghidraDir + '/Framework', include: '**/*.jar')
     compileOnly fileTree(dir: ghidraDir + '/Features', include: '**/*.jar')
-    compileOnly fileTree(dir: ghidraDir + '/Debug', include: '**/*.jar')
-    compileOnly fileTree(dir: ghidraDir + '/Processors', include: '**/*.jar')
 
     // JDBC
     runtimeOnly 'org.xerial:sqlite-jdbc:3.42.0.0'

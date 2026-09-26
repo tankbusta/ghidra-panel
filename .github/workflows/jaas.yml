@@ -1,0 +1,60 @@
+name: JAAS
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  GHIDRA_VERSION: 12.1.4
+  GHIDRA_BUILD_DATE: 20260921
+  GHIDRA_SHA256: ddac49f903da9d5bac833e5cc79395098b9c33cfd3279be5f31bd00387d2d4db
+
+jobs:
+
+  build_jaas:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+
+    - name: Set up Gradle
+      uses: gradle/actions/setup-gradle@v4
+
+    - name: Cache Ghidra
+      id: cache-ghidra
+      uses: actions/cache@v4
+      with:
+        path: ghidra_${{ env.GHIDRA_VERSION }}_PUBLIC
+        key: ghidra-${{ env.GHIDRA_VERSION }}-${{ env.GHIDRA_BUILD_DATE }}
+
+    - name: Download Ghidra
+      if: steps.cache-ghidra.outputs.cache-hit != 'true'
+      run: |
+        zip="ghidra_${GHIDRA_VERSION}_PUBLIC_${GHIDRA_BUILD_DATE}.zip"
+        curl -fsSL -o "$zip" "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_${GHIDRA_VERSION}_build/$zip"
+        echo "${GHIDRA_SHA256}  $zip" | sha256sum -c -
+        # Only the Framework and Features jars are needed to compile against
+        unzip -q "$zip" \
+          "ghidra_${GHIDRA_VERSION}_PUBLIC/Ghidra/application.properties" \
+          "ghidra_${GHIDRA_VERSION}_PUBLIC/Ghidra/Framework/*" \
+          "ghidra_${GHIDRA_VERSION}_PUBLIC/Ghidra/Features/*"
+        rm "$zip"
+
+    - name: Build
+      working-directory: jaas
+      run: ./gradlew jar -PGHIDRA_INSTALL_DIR="$GITHUB_WORKSPACE/ghidra_${GHIDRA_VERSION}_PUBLIC"
+
+    - name: Upload jar
+      uses: actions/upload-artifact@v4
+      with:
+        name: ghidra-panel-jaas-ghidra_${{ env.GHIDRA_VERSION }}
+        path: jaas/build/libs/ghidra-panel-jaas.jar
+        if-no-files-found: error
