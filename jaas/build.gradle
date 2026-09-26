@@ -92,14 +92,44 @@ tasks.register('integration', JavaExec) {
     workingDir = projectDir
 }
 
+// Several dependencies ship the same META-INF/services file (e.g. java.sql.Driver from both
+// sqlite-jdbc and postgresql). The fat jar keeps only the first copy, so merge them instead.
+def mergedServicesDir = layout.buildDirectory.dir('merged-services')
+def mergeServiceFiles = tasks.register('mergeServiceFiles') {
+    def runtimeJars = configurations.runtimeClasspath
+    inputs.files runtimeJars
+    outputs.dir mergedServicesDir
+    doLast {
+        def outDir = mergedServicesDir.get().asFile
+        outDir.deleteDir()
+        def services = [:].withDefault { new LinkedHashSet<String>() }
+        runtimeJars.files.findAll { it.isFile() }.each { jar ->
+            new java.util.zip.ZipFile(jar).withCloseable { zip ->
+                zip.entries().findAll { !it.directory && it.name.startsWith('META-INF/services/') }.each { e ->
+                    zip.getInputStream(e).getText('UTF-8').eachLine { line ->
+                        def provider = line.replaceFirst(/#.*/, '').trim()
+                        if (provider) services[e.name] << provider
+                    }
+                }
+            }
+        }
+        services.each { name, providers ->
+            def f = new File(outDir, name)
+            f.parentFile.mkdirs()
+            f.text = providers.join('\n') + '\n'
+        }
+    }
+}
+
 jar {
     archiveVersion = ""
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 
+    from mergeServiceFiles
     from {
         configurations.runtimeClasspath.collect {
             // println("Including: " + it)
-            it.isDirectory() ? it : zipTree(it)
+            it.isDirectory() ? it : zipTree(it).matching { exclude 'META-INF/services/**' }
         }
     }
 
