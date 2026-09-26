@@ -6,10 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"github.com/golang-migrate/migrate/v4"
-	"github.com/golang-migrate/migrate/v4/database/sqlite3"
+	"github.com/golang-migrate/migrate/v4/database/sqlite"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
-	_ "github.com/mattn/go-sqlite3"
 	"log"
+	_ "modernc.org/sqlite"
 )
 
 //go:embed migrations/*.sql
@@ -21,7 +21,7 @@ type DB struct {
 
 func Open(filePath string) (*DB, error) {
 	// Initialize the database
-	db, err := sql.Open("sqlite3", filePath+"?_journal_mode=WAL")
+	db, err := sql.Open("sqlite", filePath+"?_pragma=journal_mode(WAL)")
 	if err != nil {
 		return nil, err
 	}
@@ -31,11 +31,11 @@ func Open(filePath string) (*DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("migrate iofs source failed: %w", err)
 	}
-	driver, err := sqlite3.WithInstance(db, &sqlite3.Config{})
+	driver, err := sqlite.WithInstance(db, &sqlite.Config{})
 	if err != nil {
-		return nil, fmt.Errorf("migrate sqlite3 driver failed: %w", err)
+		return nil, fmt.Errorf("migrate sqlite driver failed: %w", err)
 	}
-	m, err := migrate.NewWithInstance("iofs", source, "sqlite3", driver)
+	m, err := migrate.NewWithInstance("iofs", source, "sqlite", driver)
 	if err != nil {
 		return nil, fmt.Errorf("migrate creation failed: %w", err)
 	}
