@@ -5,10 +5,12 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"errors"
-	"fmt"
 	"go.mkw.re/ghidra-panel/common"
 	"golang.org/x/crypto/argon2"
 )
+
+// ErrUserNotFound is returned when updating an account that does not exist.
+var ErrUserNotFound = errors.New("user not found")
 
 func (d *DB) GetUserState(ctx context.Context, ident *common.Identity) (*common.UserState, error) {
 	hasPass := true
@@ -78,7 +80,7 @@ func (d *DB) UpdatePassword(ctx context.Context, id uint64, password string) err
 	}
 
 	if rows, _ := result.RowsAffected(); rows == 0 {
-		return fmt.Errorf("user not found")
+		return ErrUserNotFound
 	}
 	return nil
 }
@@ -109,7 +111,7 @@ func (d *DB) UpdateAccount(ctx context.Context, id uint64, username string, pass
 	}
 
 	if rows, _ := result.RowsAffected(); rows == 0 {
-		return fmt.Errorf("user not found")
+		return ErrUserNotFound
 	}
 	return nil
 }

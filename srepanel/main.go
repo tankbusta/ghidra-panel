@@ -222,7 +222,11 @@ func updateAccount(dbPath string, userID uint64, user, pass string) {
 	defer db.Close()
 
 	ctx := context.Background()
-	if err := db.UpdateAccount(ctx, userID, user, pass); err != nil {
+	err = db.UpdateAccount(ctx, userID, user, pass)
+	if errors.Is(err, database.ErrUserNotFound) {
+		err = db.CreateAccount(ctx, userID, user, pass)
+	}
+	if err != nil {
 		log.Fatal(err)
 	}
 }
