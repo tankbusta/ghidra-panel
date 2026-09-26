@@ -2,6 +2,7 @@
 ghidra_panel.json
 ghidra_panel.secrets.json
 *.db*
+*.exe
 
 # Common junk
 .idea/

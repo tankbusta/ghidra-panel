@@ -83,6 +83,20 @@ OIDC is enabled by adding an `oidc` section with an `issuer` to the config file:
 Register `<base_url>/oidc/redirect` as the redirect URI with your provider.
 Each OIDC subject is assigned a stable local user ID stored in the database.
 
+To offer only OIDC login, leave `discord.client_id` and `discord.client_secret` unset.
+In that case the login page is skipped and users are sent straight to the OIDC provider.
+The Discord `webhook_url` still delivers access request notifications, and the optional
+`bot_token` sets the webhook's name and avatar from your Discord application.
+
+```json
+{
+  "discord": {
+    "webhook_url": "$env:DISCORD_WEBHOOK_URL"
+  },
+  "oidc": { "...": "..." }
+}
+```
+
 ### Secrets from environment variables
 
 Secret values can be loaded from the environment by prefixing the variable name with `$env:`,

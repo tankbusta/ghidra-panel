@@ -54,7 +54,7 @@ type Config struct {
 	BaseURL           string
 	GhidraEndpoint    *common.GhidraEndpoint
 	Links             []common.Link
-	DiscordApp        *discord.Application
+	DiscordApp        *discord.Application // nil if no bot token is configured
 	DiscordWebhookURL string
 	Dev               bool     // developer mode
 	SuperAdmins       []uint64 // Discord IDs
@@ -65,8 +65,8 @@ type Config struct {
 type Server struct {
 	Config *Config
 	DB     *database.DB
-	Auth   *discord.Auth
-	OIDC   *oidc.Auth // nil if OIDC is disabled
+	Auth   *discord.Auth // nil if Discord login is disabled
+	OIDC   *oidc.Auth    // nil if OIDC is disabled
 	Issuer *token.Issuer
 	Client ghidra.GhidraClient
 }
@@ -141,7 +141,7 @@ func (s *Server) authenticateState(wr http.ResponseWriter, req *http.Request, st
 			Name:   "token",
 			Value:  "",
 			Path:   "/",
-			MaxAge: 0,
+			MaxAge: -1,
 		})
 		s.redirectLogin(wr, req, true)
 		return false

@@ -149,9 +149,13 @@ func (s *Server) writeMessage(ident *common.Identity, username string, repo stri
 		Fields:      []discord.EmbedField{usernameField, repositoryField, roleField, manageField},
 	}
 
-	return &discord.WebhookMessage{
-		Username:  s.Config.DiscordApp.Name,
-		AvatarURL: fmt.Sprintf("https://cdn.discordapp.com/app-icons/%s/%s.png", s.Config.DiscordApp.ID, s.Config.DiscordApp.Icon),
-		Embeds:    []discord.Embed{ghidraEmbed},
-	}, nil
+	message := &discord.WebhookMessage{
+		Embeds: []discord.Embed{ghidraEmbed},
+	}
+	// Without a bot token, the webhook's own name and avatar are used
+	if app := s.Config.DiscordApp; app != nil {
+		message.Username = app.Name
+		message.AvatarURL = fmt.Sprintf("https://cdn.discordapp.com/app-icons/%s/%s.png", app.ID, app.Icon)
+	}
+	return message, nil
 }

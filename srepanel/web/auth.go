@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"go.mkw.re/ghidra-panel/common"
 )
@@ -16,12 +17,16 @@ func (s *Server) handleLogin(wr http.ResponseWriter, req *http.Request) {
 
 	switch req.Method {
 	case http.MethodGet:
+		if s.autoLogin(req) {
+			s.OIDC.RedirectToProvider(wr, req)
+			return
+		}
 		state := s.stateWithNav(
 			req,
 			Nav{Route: "/", Name: "Ghidra"},
 			Nav{Route: "/login", Name: "Login"},
 		)
-		loginState := LoginState{State: state}
+		loginState := LoginState{State: state, Discord: s.Auth != nil}
 		if s.OIDC != nil {
 			loginState.OIDCName = s.Config.OIDCDisplayName
 		}
@@ -44,13 +49,22 @@ func (s *Server) handleLogin(wr http.ResponseWriter, req *http.Request) {
 			s.OIDC.RedirectToProvider(wr, req)
 			return
 		}
-		http.Redirect(wr, req, s.Auth.AuthURL(), http.StatusSeeOther)
+		if req.FormValue("provider") == "discord" && s.Auth != nil {
+			http.Redirect(wr, req, s.Auth.AuthURL(), http.StatusSeeOther)
+			return
+		}
+		http.Error(wr, "Unknown login provider", http.StatusBadRequest)
 	default:
 		http.Error(wr, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
 func (s *Server) handleOAuthRedirect(wr http.ResponseWriter, req *http.Request) {
+	if s.Auth == nil {
+		http.NotFound(wr, req)
+		return
+	}
+
 	ident, err := s.Auth.HandleRedirect(wr, req)
 	if err != nil {
 		log.Println("Redirect request failed:", err)
@@ -112,6 +126,7 @@ func (s *Server) setTokenCookie(wr http.ResponseWriter, ident *common.Identity) 
 
 type LoginState struct {
 	*State
+	Discord  bool   // show the Discord login button
 	OIDCName string // OIDC button label, empty if OIDC is disabled
 }
 
@@ -136,9 +151,16 @@ func (s *Server) handleLogout(wr http.ResponseWriter, req *http.Request) {
 		Name:   "token",
 		Value:  "",
 		Path:   "/",
-		MaxAge: 0,
+		MaxAge: -1,
 	})
-	s.redirectLogin(wr, req, false)
+	// Show the login page rather than signing back in via the provider's session
+	http.Redirect(wr, req, "/login?status=logged_out", http.StatusSeeOther)
+}
+
+// autoLogin reports whether the login page should be skipped in favor of the OIDC provider.
+// This applies when OIDC is the only login provider, unless a status message is shown.
+func (s *Server) autoLogin(req *http.Request) bool {
+	return s.OIDC != nil && s.Auth == nil && !s.Config.Dev && req.URL.Query().Get("status") == ""
 }
 
 // redirectHome redirects to the home page or a stored redirect target.
@@ -156,15 +178,20 @@ func fetchRedirect(wr http.ResponseWriter, req *http.Request) *url.URL {
 	if err != nil {
 		return nil
 	}
-	// Clear the redirect cookie
+	// Delete the redirect cookie (MaxAge 0 would keep an empty cookie instead)
 	http.SetCookie(wr, &http.Cookie{
 		Name:   "redirect",
 		Value:  "",
 		Path:   "/",
-		MaxAge: 0,
+		MaxAge: -1,
 	})
+	// Only follow local paths. An empty or relative value would be resolved
+	// against the callback path, e.g. /oidc/redirect -> /oidc/.
+	if !strings.HasPrefix(cookie.Value, "/") || strings.HasPrefix(cookie.Value, "//") {
+		return nil
+	}
 	toUrl, err := url.Parse(cookie.Value)
-	if err != nil {
+	if err != nil || toUrl.Scheme != "" || toUrl.Host != "" {
 		return nil
 	}
 	return toUrl

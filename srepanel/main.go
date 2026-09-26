@@ -125,14 +125,19 @@ func main() {
 		return
 	}
 
-	redirectURL := cfg.BaseURL + "/redirect"
-
-	app, err := discord.GetApplication(ctx, cfg.Discord.BotToken)
-	if err != nil {
-		log.Fatal(err)
+	// The Discord application provides the webhook name and avatar
+	var app *discord.Application
+	if cfg.Discord.BotToken != "" {
+		app, err = discord.GetApplication(ctx, cfg.Discord.BotToken)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
-	auth := discord.NewAuth(cfg.Discord.ClientID, cfg.Discord.ClientSecret, redirectURL)
+	var auth *discord.Auth
+	if cfg.discordLoginEnabled() {
+		auth = discord.NewAuth(cfg.Discord.ClientID, cfg.Discord.ClientSecret, cfg.BaseURL+"/redirect")
+	}
 
 	var oidcAuth *oidc.Auth
 	if cfg.OIDC.enabled() {

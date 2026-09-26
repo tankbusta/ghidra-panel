@@ -53,12 +53,21 @@ func (c *oidcConfig) setDefaults() {
 	}
 }
 
+// Discord login is enabled when OAuth2 client credentials are configured.
+// The bot token and webhook URL are used for notifications independently.
+func (c *config) discordLoginEnabled() bool {
+	return c.Discord.ClientID != ""
+}
+
 func (c *config) validate() {
-	if c.Discord.ClientID == "" {
-		log.Fatal("client_id not set")
+	if c.discordLoginEnabled() && c.Discord.ClientSecret == "" {
+		log.Fatal("discord.client_secret not set")
 	}
-	if c.Discord.ClientSecret == "" {
-		log.Fatal("client_secret not set")
+	if !c.discordLoginEnabled() && c.Discord.ClientSecret != "" {
+		log.Fatal("discord.client_id not set")
+	}
+	if !c.discordLoginEnabled() && !c.OIDC.enabled() {
+		log.Fatal("no login provider configured, set discord.client_id or oidc.issuer")
 	}
 	if c.BaseURL == "" {
 		log.Fatal("base_url not set")

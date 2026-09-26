@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"golang.org/x/oauth2"
 	"net/http"
 
@@ -23,6 +24,9 @@ func GetApplication(ctx context.Context, botToken string) (*Application, error) 
 		return nil, err
 	}
 	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch Discord application: %s", res.Status)
+	}
 
 	app := Application{}
 	if err := json.NewDecoder(res.Body).Decode(&app); err != nil {

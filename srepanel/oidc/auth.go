@@ -108,7 +108,8 @@ func (c *Auth) HandleRedirect(wr http.ResponseWriter, req *http.Request) (info *
 	errDescription := req.FormValue("error_description")
 	if errID != "" {
 		if errID == "access_denied" {
-			http.Redirect(wr, req, "/login", http.StatusSeeOther)
+			// The status prevents the login page from redirecting back to the provider
+			http.Redirect(wr, req, "/login?status=access_denied", http.StatusSeeOther)
 			return nil, nil
 		}
 		http.Error(wr, errDescription, http.StatusUnauthorized)
