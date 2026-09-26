@@ -15,6 +15,7 @@ import (
 
 	"go.mkw.re/ghidra-panel/database"
 	"go.mkw.re/ghidra-panel/discord"
+	"go.mkw.re/ghidra-panel/oidc"
 	"go.mkw.re/ghidra-panel/token"
 	"go.mkw.re/ghidra-panel/web"
 )
@@ -73,6 +74,10 @@ func main() {
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {
 		log.Fatal(err)
 	}
+	if err := cfg.resolveEnv(); err != nil {
+		log.Fatal(err)
+	}
+	cfg.OIDC.setDefaults()
 	if !*cmdInit {
 		cfg.validate()
 	}
@@ -129,6 +134,23 @@ func main() {
 
 	auth := discord.NewAuth(cfg.Discord.ClientID, cfg.Discord.ClientSecret, redirectURL)
 
+	var oidcAuth *oidc.Auth
+	if cfg.OIDC.enabled() {
+		oidcAuth, err = oidc.NewAuth(
+			ctx,
+			cfg.OIDC.Issuer,
+			cfg.OIDC.ClientID,
+			cfg.OIDC.ClientSecret,
+			cfg.BaseURL+"/oidc/redirect",
+			cfg.OIDC.Scopes,
+			cfg.OIDC.UsernameClaim,
+		)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Println("OIDC login enabled for issuer", oidcAuth.Issuer)
+	}
+
 	issuer := token.NewIssuer(secrets.HMACSecret)
 
 	webConfig := web.Config{
@@ -139,8 +161,10 @@ func main() {
 		DiscordWebhookURL: cfg.Discord.WebhookURL,
 		Dev:               *dev,
 		SuperAdmins:       cfg.SuperAdmins,
+		OIDCDisplayName:   cfg.OIDC.DisplayName,
+		OIDCSuperAdmins:   cfg.OIDC.SuperAdmins,
 	}
-	server, err := web.NewServer(&webConfig, db, auth, &issuer, client)
+	server, err := web.NewServer(&webConfig, db, auth, oidcAuth, &issuer, client)
 	if err != nil {
 		log.Fatal(err)
 	}

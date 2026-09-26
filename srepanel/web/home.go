@@ -6,7 +6,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"log"
 	"net/http"
-	"slices"
 	"sort"
 	"strings"
 )
@@ -30,7 +29,7 @@ func (s *Server) handleHome(wr http.ResponseWriter, req *http.Request) {
 	if !s.authenticateState(wr, req, state.State) {
 		return
 	}
-	state.SuperAdmin = slices.Contains(s.Config.SuperAdmins, state.Identity.ID)
+	state.SuperAdmin = s.isSuperAdmin(state.Identity)
 
 	// Fetch repository and user information from Ghidra
 	reply, err := s.Client.GetRepositories(req.Context(), &emptypb.Empty{})

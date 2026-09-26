@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"slices"
 )
 
 func (s *Server) handleUpdateRepo(wr http.ResponseWriter, req *http.Request) {
@@ -34,7 +33,7 @@ func (s *Server) handleUpdateRepo(wr http.ResponseWriter, req *http.Request) {
 	}
 
 	// Allow super admins to update any repository
-	if !slices.Contains(s.Config.SuperAdmins, ident.ID) {
+	if !s.isSuperAdmin(ident) {
 		// Fetch user state from the database and Ghidra
 		result, err := s.fetchUserPermission(req, ident, repo)
 		if err != nil {

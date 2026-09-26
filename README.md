@@ -21,7 +21,7 @@ This repository is not an official Ghidra project.
 - Discord OAuth2 integration to authenticate users,
   and link Ghidra usernames to Discord usernames
   - Discord was chosen because all RE communities I've worked with use it
-  - I'm open to adding OAuth 2.0 / OpenID Connect to support other SSO providers
+- Optional OpenID Connect login for other SSO providers (see [OIDC](#oidc))
 
 [SQLite database]: https://www.sqlite.org/index.html
 [JAAS plugin]: https://docs.oracle.com/javase/8/docs/technotes/guides/security/jaas/JAASRefGuide.html
@@ -52,6 +52,43 @@ Panel --> SQLite
 Panel --> Discord
 JAASPlugin --> SQLite
 ```
+
+## OIDC
+
+In addition to Discord, users can sign in with any OpenID Connect provider.
+OIDC is enabled by adding an `oidc` section with an `issuer` to the config file:
+
+```json
+{
+  "oidc": {
+    "issuer": "https://auth.example.com/application/o/ghidra/",
+    "client_id": "$env:OIDC_CLIENT_ID",
+    "client_secret": "$env:OIDC_CLIENT_SECRET",
+    "display_name": "Example SSO",
+    "super_admins": ["<sub of admin user>"]
+  }
+}
+```
+
+| Key              | Required | Default                        | Description                                                |
+|------------------|----------|--------------------------------|------------------------------------------------------------|
+| `issuer`         | yes      |                                | Issuer URL, used for discovery                             |
+| `client_id`      | yes      |                                | OAuth2 client ID                                           |
+| `client_secret`  | yes      |                                | OAuth2 client secret                                       |
+| `display_name`   | no       | `SSO`                          | Login button label ("Continue with ...")                   |
+| `scopes`         | no       | `["openid", "profile", "email"]` | Requested scopes                                         |
+| `username_claim` | no       | `preferred_username`           | Userinfo claim used as the display/default Ghidra username |
+| `super_admins`   | no       |                                | `sub` values of super admins                               |
+
+Register `<base_url>/oidc/redirect` as the redirect URI with your provider.
+Each OIDC subject is assigned a stable local user ID stored in the database.
+
+### Secrets from environment variables
+
+Secret values can be loaded from the environment by prefixing the variable name with `$env:`,
+e.g. `"client_secret": "$env:OIDC_CLIENT_SECRET"`. The panel refuses to start if the variable is unset.
+This is supported for `discord.bot_token`, `discord.client_id`, `discord.client_secret`,
+`discord.webhook_url`, `oidc.issuer`, `oidc.client_id` and `oidc.client_secret`.
 
 ## Philosophy
 

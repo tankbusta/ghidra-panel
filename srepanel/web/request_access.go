@@ -97,8 +97,13 @@ func (s *Server) handleRequestAccess(wr http.ResponseWriter, req *http.Request) 
 
 func (s *Server) writeMessage(ident *common.Identity, username string, repo string, perm ghidra.Permission) (*discord.WebhookMessage, error) {
 	embedAuthor := discord.EmbedAuthor{
-		Name:    ident.Username,
-		IconURL: fmt.Sprintf("https://cdn.discordapp.com/avatars/%d/%s.png", ident.ID, ident.AvatarHash),
+		Name: ident.Username,
+	}
+	// OIDC users have no Discord account to mention or avatar to show
+	requester := fmt.Sprintf("**%s**", ident.Username)
+	if !ident.IsOIDC() {
+		embedAuthor.IconURL = fmt.Sprintf("https://cdn.discordapp.com/avatars/%d/%s.png", ident.ID, ident.AvatarHash)
+		requester = fmt.Sprintf("<@%d>", ident.ID)
 	}
 
 	usernameField := discord.EmbedField{
@@ -138,7 +143,7 @@ func (s *Server) writeMessage(ident *common.Identity, username string, repo stri
 
 	ghidraEmbed := discord.Embed{
 		Title:       "Access Request",
-		Description: fmt.Sprintf("<@%d> has requested access to the following repository.", ident.ID),
+		Description: requester + " has requested access to the following repository.",
 		Color:       ghidra.PermColor(perm),
 		Author:      embedAuthor,
 		Fields:      []discord.EmbedField{usernameField, repositoryField, roleField, manageField},

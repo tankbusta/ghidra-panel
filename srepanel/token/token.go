@@ -24,8 +24,9 @@ func NewIssuer(secret []byte) Issuer {
 
 type Claims struct {
 	jwt.RegisteredClaims
-	Name       string `json:"name,omitempty"`
-	AvatarHash string `json:"avatar,omitempty"`
+	Name        string `json:"name,omitempty"`
+	AvatarHash  string `json:"avatar,omitempty"`
+	OIDCSubject string `json:"oidc_sub,omitempty"`
 }
 
 func (iss Issuer) Issue(ident *common.Identity) (string, time.Time) {
@@ -38,8 +39,9 @@ func (iss Issuer) Issue(ident *common.Identity) (string, time.Time) {
 			IssuedAt:  jwt.NewNumericDate(iat),
 			ExpiresAt: jwt.NewNumericDate(exp),
 		},
-		Name:       ident.Username,
-		AvatarHash: ident.AvatarHash,
+		Name:        ident.Username,
+		AvatarHash:  ident.AvatarHash,
+		OIDCSubject: ident.OIDCSubject,
 	})
 
 	tokenString, err := token.SignedString(iss.Secret)
@@ -70,8 +72,9 @@ func (iss Issuer) Verify(tokenString string) (ident *common.Identity, err error)
 
 	// Reconstruct identity
 	return &common.Identity{
-		ID:         id,
-		Username:   claims.Name,
-		AvatarHash: claims.AvatarHash,
+		ID:          id,
+		Username:    claims.Name,
+		AvatarHash:  claims.AvatarHash,
+		OIDCSubject: claims.OIDCSubject,
 	}, nil
 }

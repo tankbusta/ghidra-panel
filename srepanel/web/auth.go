@@ -21,7 +21,11 @@ func (s *Server) handleLogin(wr http.ResponseWriter, req *http.Request) {
 			Nav{Route: "/", Name: "Ghidra"},
 			Nav{Route: "/login", Name: "Login"},
 		)
-		err := loginPage.Execute(wr, state)
+		loginState := LoginState{State: state}
+		if s.OIDC != nil {
+			loginState.OIDCName = s.Config.OIDCDisplayName
+		}
+		err := loginPage.Execute(wr, loginState)
 		if err != nil {
 			log.Println("Failed to serve login:", err)
 			_, _ = wr.Write([]byte("Failed to render the login page"))
@@ -32,16 +36,12 @@ func (s *Server) handleLogin(wr http.ResponseWriter, req *http.Request) {
 				ID:       1,
 				Username: "testuser",
 			}
-			token, exp := s.Issuer.Issue(ident)
-			http.SetCookie(wr, &http.Cookie{
-				Name:     "token",
-				Value:    token,
-				Path:     "/",
-				Expires:  exp,
-				HttpOnly: true,
-				Secure:   true,
-			})
+			s.setTokenCookie(wr, ident)
 			s.redirectHome(wr, req)
+			return
+		}
+		if req.FormValue("provider") == "oidc" && s.OIDC != nil {
+			s.OIDC.RedirectToProvider(wr, req)
 			return
 		}
 		http.Redirect(wr, req, s.Auth.AuthURL(), http.StatusSeeOther)
@@ -61,6 +61,44 @@ func (s *Server) handleOAuthRedirect(wr http.ResponseWriter, req *http.Request) 
 		return
 	}
 
+	s.setTokenCookie(wr, ident)
+	s.redirectHome(wr, req)
+}
+
+func (s *Server) handleOIDCRedirect(wr http.ResponseWriter, req *http.Request) {
+	if s.OIDC == nil {
+		http.NotFound(wr, req)
+		return
+	}
+
+	info, err := s.OIDC.HandleRedirect(wr, req)
+	if err != nil {
+		log.Println("OIDC redirect request failed:", err)
+		http.Error(wr, "Authorization failed", http.StatusUnauthorized)
+		return
+	}
+	if info == nil {
+		return
+	}
+
+	// Map the OIDC subject to a stable local user ID
+	id, err := s.DB.GetOrCreateOIDCUserID(req.Context(), s.OIDC.Issuer, info.Subject)
+	if err != nil {
+		log.Println("Failed to get OIDC user ID:", err)
+		http.Error(wr, "Authorization failed", http.StatusInternalServerError)
+		return
+	}
+
+	s.setTokenCookie(wr, &common.Identity{
+		ID:          id,
+		Username:    info.Username,
+		OIDCSubject: info.Subject,
+	})
+	s.redirectHome(wr, req)
+}
+
+// setTokenCookie issues a session token for the identity.
+func (s *Server) setTokenCookie(wr http.ResponseWriter, ident *common.Identity) {
 	token, exp := s.Issuer.Issue(ident)
 	http.SetCookie(wr, &http.Cookie{
 		Name:     "token",
@@ -70,7 +108,11 @@ func (s *Server) handleOAuthRedirect(wr http.ResponseWriter, req *http.Request) 
 		HttpOnly: true,
 		Secure:   true,
 	})
-	s.redirectHome(wr, req)
+}
+
+type LoginState struct {
+	*State
+	OIDCName string // OIDC button label, empty if OIDC is disabled
 }
 
 func (s *Server) checkAuth(req *http.Request) (*common.Identity, bool) {
