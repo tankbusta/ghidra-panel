@@ -3,6 +3,7 @@ name: JAAS
 on:
   push:
     branches: [ "main" ]
+    tags: [ "v*" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
@@ -16,6 +17,8 @@ jobs:
 
   build_jaas:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
     - uses: actions/checkout@v4
 
@@ -52,9 +55,21 @@ jobs:
       working-directory: jaas
       run: ./gradlew jar -PGHIDRA_INSTALL_DIR="$GITHUB_WORKSPACE/ghidra_${GHIDRA_VERSION}_PUBLIC"
 
+    # The jar only works with the Ghidra version it was built against
+    - name: Rename jar
+      run: mv jaas/build/libs/ghidra-panel-jaas.jar "jaas/build/libs/ghidra-panel-jaas-ghidra_${GHIDRA_VERSION}.jar"
+
     - name: Upload jar
       uses: actions/upload-artifact@v4
       with:
         name: ghidra-panel-jaas-ghidra_${{ env.GHIDRA_VERSION }}
-        path: jaas/build/libs/ghidra-panel-jaas.jar
+        path: jaas/build/libs/ghidra-panel-jaas-ghidra_${{ env.GHIDRA_VERSION }}.jar
         if-no-files-found: error
+
+    - name: Publish release
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: jaas/build/libs/ghidra-panel-jaas-ghidra_${{ env.GHIDRA_VERSION }}.jar
+        fail_on_unmatched_files: true
+        generate_release_notes: true
