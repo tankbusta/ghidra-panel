@@ -1,4 +1,4 @@
-GRADLE?=gradle
+GRADLE?=./gradlew
 SQLITE?=sqlite3
 
 .PHONY: build
@@ -10,10 +10,7 @@ build:
 
 .PHONY: integration
 integration: ../test.db
-	SAMPLE_USER=richard SAMPLE_PASS=richard $(MAVEN) \
- 	  -Dexec.mainClass=re.mkw.srejaas.SampleAcn \
- 	  -Dexec.classpathScope=test test-compile \
- 	  -Djava.security.auth.login.config=test.conf exec:java
+	SAMPLE_USER=richard SAMPLE_PASS=richard $(GRADLE) integration
 
 .PHONY: clean
 clean:

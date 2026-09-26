@@ -6,7 +6,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"log"
 	"net/http"
-	"slices"
 	"sort"
 )
 
@@ -36,7 +35,7 @@ func (s *Server) handleRepo(wr http.ResponseWriter, req *http.Request) {
 	if !s.authenticateState(wr, req, state.State) {
 		return
 	}
-	isSuperAdmin := slices.Contains(s.Config.SuperAdmins, state.Identity.ID)
+	isSuperAdmin := s.isSuperAdmin(state.Identity)
 
 	// Fetch repository information from the database
 	info, err := s.DB.GetRepository(req.Context(), repoName)

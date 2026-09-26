@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"slices"
 	"unicode"
 	"unicode/utf8"
 
@@ -14,6 +15,7 @@ import (
 	"go.mkw.re/ghidra-panel/database"
 	"go.mkw.re/ghidra-panel/discord"
 	"go.mkw.re/ghidra-panel/ghidra"
+	"go.mkw.re/ghidra-panel/oidc"
 	"go.mkw.re/ghidra-panel/token"
 )
 
@@ -52,16 +54,19 @@ type Config struct {
 	BaseURL           string
 	GhidraEndpoint    *common.GhidraEndpoint
 	Links             []common.Link
-	DiscordApp        *discord.Application
+	DiscordApp        *discord.Application // nil if no bot token is configured
 	DiscordWebhookURL string
-	Dev               bool // developer mode
-	SuperAdmins       []uint64
+	Dev               bool     // developer mode
+	SuperAdmins       []uint64 // Discord IDs
+	OIDCDisplayName   string
+	OIDCSuperAdmins   []string // OIDC subjects
 }
 
 type Server struct {
 	Config *Config
 	DB     *database.DB
-	Auth   *discord.Auth
+	Auth   *discord.Auth // nil if Discord login is disabled
+	OIDC   *oidc.Auth    // nil if OIDC is disabled
 	Issuer *token.Issuer
 	Client ghidra.GhidraClient
 }
@@ -70,6 +75,7 @@ func NewServer(
 	config *Config,
 	db *database.DB,
 	auth *discord.Auth,
+	oidcAuth *oidc.Auth,
 	issuer *token.Issuer,
 	client ghidra.GhidraClient,
 ) (*Server, error) {
@@ -77,6 +83,7 @@ func NewServer(
 		Config: config,
 		DB:     db,
 		Auth:   auth,
+		OIDC:   oidcAuth,
 		Issuer: issuer,
 		Client: client,
 	}
@@ -88,6 +95,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /login", s.handleLogin)
 	mux.HandleFunc("POST /login", s.handleLogin)
 	mux.HandleFunc("GET /redirect", s.handleOAuthRedirect)
+	mux.HandleFunc("GET /oidc/redirect", s.handleOIDCRedirect)
 	mux.HandleFunc("GET /logout", s.handleLogout)
 	mux.HandleFunc("GET /repos/{repo}", s.handleRepo)
 
@@ -133,7 +141,7 @@ func (s *Server) authenticateState(wr http.ResponseWriter, req *http.Request, st
 			Name:   "token",
 			Value:  "",
 			Path:   "/",
-			MaxAge: 0,
+			MaxAge: -1,
 		})
 		s.redirectLogin(wr, req, true)
 		return false
@@ -150,6 +158,14 @@ func (s *Server) authenticateState(wr http.ResponseWriter, req *http.Request, st
 	state.UserState = userState
 
 	return true
+}
+
+// isSuperAdmin checks the identity against the super admin list for its provider.
+func (s *Server) isSuperAdmin(ident *common.Identity) bool {
+	if ident.IsOIDC() {
+		return slices.Contains(s.Config.OIDCSuperAdmins, ident.OIDCSubject)
+	}
+	return slices.Contains(s.Config.SuperAdmins, ident.ID)
 }
 
 // lessCaseInsensitive compares s, t without allocating

@@ -15,13 +15,14 @@ This repository is not an official Ghidra project.
 `ghidra-panel` introduces the following components:
 
 - [SQLite database] storing hashed user credentials
+  (optionally [PostgreSQL](#postgresql))
 - [JAAS plugin] implementing a Ghidra authentication provider
 - [gRPC server] providing an API for the panel to interact with Ghidra
 - Web server, written in [Go]
 - Discord OAuth2 integration to authenticate users,
   and link Ghidra usernames to Discord usernames
   - Discord was chosen because all RE communities I've worked with use it
-  - I'm open to adding OAuth 2.0 / OpenID Connect to support other SSO providers
+- Optional OpenID Connect login for other SSO providers (see [OIDC](#oidc))
 
 [SQLite database]: https://www.sqlite.org/index.html
 [JAAS plugin]: https://docs.oracle.com/javase/8/docs/technotes/guides/security/jaas/JAASRefGuide.html
@@ -52,6 +53,89 @@ Panel --> SQLite
 Panel --> Discord
 JAASPlugin --> SQLite
 ```
+
+## OIDC
+
+In addition to Discord, users can sign in with any OpenID Connect provider.
+OIDC is enabled by adding an `oidc` section with an `issuer` to the config file:
+
+```json
+{
+  "oidc": {
+    "issuer": "https://auth.example.com/application/o/ghidra/",
+    "client_id": "$env:OIDC_CLIENT_ID",
+    "client_secret": "$env:OIDC_CLIENT_SECRET",
+    "display_name": "Example SSO",
+    "super_admins": ["<sub of admin user>"]
+  }
+}
+```
+
+| Key              | Required | Default                        | Description                                                |
+|------------------|----------|--------------------------------|------------------------------------------------------------|
+| `issuer`         | yes      |                                | Issuer URL, used for discovery                             |
+| `client_id`      | yes      |                                | OAuth2 client ID                                           |
+| `client_secret`  | yes      |                                | OAuth2 client secret                                       |
+| `display_name`   | no       | `SSO`                          | Login button label ("Continue with ...")                   |
+| `scopes`         | no       | `["openid", "profile", "email"]` | Requested scopes                                         |
+| `username_claim` | no       | `preferred_username`           | Userinfo claim used as the display/default Ghidra username |
+| `super_admins`   | no       |                                | `sub` values of super admins                               |
+
+Register `<base_url>/oidc/redirect` as the redirect URI with your provider.
+Each OIDC subject is assigned a stable local user ID stored in the database.
+
+To offer only OIDC login, leave `discord.client_id` and `discord.client_secret` unset.
+In that case the login page is skipped and users are sent straight to the OIDC provider.
+The Discord `webhook_url` still delivers access request notifications, and the optional
+`bot_token` sets the webhook's name and avatar from your Discord application.
+
+```json
+{
+  "discord": {
+    "webhook_url": "$env:DISCORD_WEBHOOK_URL"
+  },
+  "oidc": { "...": "..." }
+}
+```
+
+### Secrets from environment variables
+
+Secret values can be loaded from the environment by prefixing the variable name with `$env:`,
+e.g. `"client_secret": "$env:OIDC_CLIENT_SECRET"`. The panel refuses to start if the variable is unset.
+This is supported for `database`, `discord.bot_token`, `discord.client_id`, `discord.client_secret`,
+`discord.webhook_url`, `oidc.issuer`, `oidc.client_id` and `oidc.client_secret`.
+
+## PostgreSQL
+
+SQLite is the default (`ghidra_panel.db`). To use PostgreSQL instead, set `database` in the config
+to a `postgres://` URL. Like other secrets, it can be read from the environment:
+
+```json
+{
+  "database": "$env:DATABASE_URL"
+}
+```
+
+The `-db` flag overrides the config value, and also accepts `$env:NAME`. The `rename` and
+`set-password` subcommands don't read the config, so pass them `-db` directly:
+
+```sh
+srepanel set-password -db '$env:DATABASE_URL' -user-id 42 -user alice -pass hunter2
+```
+
+Migrations run automatically on startup. Any [libpq connection parameter](https://pkg.go.dev/github.com/jackc/pgx/v5/pgconn#ParseConfig)
+is accepted, and the standard `PG*` environment variables (e.g. `PGPASSWORD`) are honored,
+which keeps the password out of the process list.
+
+The JAAS plugin reads the same `passwords` table, so point its `JDBC` option at the same database:
+
+```
+JDBC="jdbc:postgresql://db.example.com/ghidra_panel?user=ghidra_panel&password=...&sslmode=verify-full"
+```
+
+The plugin only needs `SELECT` on `passwords`.
+
+Existing SQLite data is not migrated automatically.
 
 ## Philosophy
 

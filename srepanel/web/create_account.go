@@ -25,7 +25,7 @@ func (s *Server) handleCreateAccount(wr http.ResponseWriter, req *http.Request) 
 	user := req.PostForm.Get("username")
 	pass := req.PostForm.Get("password")
 
-	// Fallback to the Discord username if no username is provided
+	// Fallback to the identity provider username if no username is provided
 	if user == "" {
 		user = ident.Username
 	}

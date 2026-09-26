@@ -44,7 +44,7 @@ type Embed struct {
 
 // WebhookMessage https://discord.com/developers/docs/resources/webhook#execute-webhook
 type WebhookMessage struct {
-	Username  string  `json:"username"`
-	AvatarURL string  `json:"avatar_url"`
+	Username  string  `json:"username,omitempty"`
+	AvatarURL string  `json:"avatar_url,omitempty"`
 	Embeds    []Embed `json:"embeds"`
 }

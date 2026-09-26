@@ -1,0 +1,6 @@
+# Only the Go panel goes into the image; keep local configs, secrets and databases out
+*
+!srepanel/
+srepanel/srepanel
+srepanel/*.exe
+srepanel/**/*.db*

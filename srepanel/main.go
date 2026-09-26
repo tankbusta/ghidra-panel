@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -15,6 +16,7 @@ import (
 
 	"go.mkw.re/ghidra-panel/database"
 	"go.mkw.re/ghidra-panel/discord"
+	"go.mkw.re/ghidra-panel/oidc"
 	"go.mkw.re/ghidra-panel/token"
 	"go.mkw.re/ghidra-panel/web"
 )
@@ -25,12 +27,12 @@ func main() {
 		switch os.Args[1] {
 		case "rename":
 			os.Args = os.Args[1:]
-			dbPath := flag.String("db", "ghidra_panel.db", "path to database file")
+			dbPath := flag.String("db", defaultDatabase, "SQLite database file path or postgres:// URL (supports $env:NAME)")
 			argUserID := flag.Uint64("user-id", 0, "ID of user to rename")
 			argUser := flag.String("user", "", "new username")
 			flag.Parse()
 
-			db, err := database.Open(*dbPath)
+			db, err := openDatabase(*dbPath)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -42,7 +44,7 @@ func main() {
 			return
 		case "set-password":
 			os.Args = os.Args[1:]
-			dbPath := flag.String("db", "ghidra_panel.db", "path to database file")
+			dbPath := flag.String("db", defaultDatabase, "SQLite database file path or postgres:// URL (supports $env:NAME)")
 			argUserID := flag.Uint64("user-id", 0, "user id to set password for")
 			argUser := flag.String("user", "", "user to set password for")
 			argPass := flag.String("pass", "", "password to set")
@@ -55,7 +57,7 @@ func main() {
 	// prod args
 	configPath := flag.String("config", "ghidra_panel.json", "path to config file")
 	secretsPath := flag.String("secrets", "ghidra_panel.secrets.json", "path to secrets file")
-	dbPath := flag.String("db", "ghidra_panel.db", "path to database file")
+	dbFlag := flag.String("db", "", "SQLite database file path or postgres:// URL (supports $env:NAME), overrides config \"database\" (default \""+defaultDatabase+"\")")
 	listen := flag.String("listen", ":8080", "listen address")
 	cmdInit := flag.Bool("init", false, "initialize database and exit")
 	dev := flag.Bool("dev", false, "enable development mode")
@@ -73,6 +75,10 @@ func main() {
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {
 		log.Fatal(err)
 	}
+	if err := cfg.resolveEnv(); err != nil {
+		log.Fatal(err)
+	}
+	cfg.OIDC.setDefaults()
 	if !*cmdInit {
 		cfg.validate()
 	}
@@ -89,7 +95,11 @@ func main() {
 
 	// Open database
 
-	db, err := database.Open(*dbPath)
+	dsn, err := databaseDSN(*dbFlag, cfg.Database)
+	if err != nil {
+		log.Fatal("database: ", err)
+	}
+	db, err := database.Open(dsn)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -120,14 +130,36 @@ func main() {
 		return
 	}
 
-	redirectURL := cfg.BaseURL + "/redirect"
-
-	app, err := discord.GetApplication(ctx, cfg.Discord.BotToken)
-	if err != nil {
-		log.Fatal(err)
+	// The Discord application provides the webhook name and avatar
+	var app *discord.Application
+	if cfg.Discord.BotToken != "" {
+		app, err = discord.GetApplication(ctx, cfg.Discord.BotToken)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
-	auth := discord.NewAuth(cfg.Discord.ClientID, cfg.Discord.ClientSecret, redirectURL)
+	var auth *discord.Auth
+	if cfg.discordLoginEnabled() {
+		auth = discord.NewAuth(cfg.Discord.ClientID, cfg.Discord.ClientSecret, cfg.BaseURL+"/redirect")
+	}
+
+	var oidcAuth *oidc.Auth
+	if cfg.OIDC.enabled() {
+		oidcAuth, err = oidc.NewAuth(
+			ctx,
+			cfg.OIDC.Issuer,
+			cfg.OIDC.ClientID,
+			cfg.OIDC.ClientSecret,
+			cfg.BaseURL+"/oidc/redirect",
+			cfg.OIDC.Scopes,
+			cfg.OIDC.UsernameClaim,
+		)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Println("OIDC login enabled for issuer", oidcAuth.Issuer)
+	}
 
 	issuer := token.NewIssuer(secrets.HMACSecret)
 
@@ -139,8 +171,10 @@ func main() {
 		DiscordWebhookURL: cfg.Discord.WebhookURL,
 		Dev:               *dev,
 		SuperAdmins:       cfg.SuperAdmins,
+		OIDCDisplayName:   cfg.OIDC.DisplayName,
+		OIDCSuperAdmins:   cfg.OIDC.SuperAdmins,
 	}
-	server, err := web.NewServer(&webConfig, db, auth, &issuer, client)
+	server, err := web.NewServer(&webConfig, db, auth, oidcAuth, &issuer, client)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -171,15 +205,28 @@ func main() {
 	log.Println("Server stopped gracefully")
 }
 
+// openDatabase opens the database given by a subcommand's -db flag.
+func openDatabase(dbFlag string) (*database.DB, error) {
+	dsn, err := databaseDSN(dbFlag, "")
+	if err != nil {
+		return nil, fmt.Errorf("database: %w", err)
+	}
+	return database.Open(dsn)
+}
+
 func updateAccount(dbPath string, userID uint64, user, pass string) {
-	db, err := database.Open(dbPath)
+	db, err := openDatabase(dbPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
 
 	ctx := context.Background()
-	if err := db.UpdateAccount(ctx, userID, user, pass); err != nil {
+	err = db.UpdateAccount(ctx, userID, user, pass)
+	if errors.Is(err, database.ErrUserNotFound) {
+		err = db.CreateAccount(ctx, userID, user, pass)
+	}
+	if err != nil {
 		log.Fatal(err)
 	}
 }

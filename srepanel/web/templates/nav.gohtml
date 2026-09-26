@@ -1,10 +1,5 @@
 <nav class="container-fluid">
   <ul>
-    <li>
-      <a href="https://decomp.dev" class="contrast">
-        <strong>decomp.dev</strong>
-      </a>
-    </li>
     {{ range $nav := .Nav }}
     <li>
       <a href="{{ $nav.Route }}">{{ $nav.Name }}</a>

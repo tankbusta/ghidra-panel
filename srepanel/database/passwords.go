@@ -5,16 +5,18 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"errors"
-	"fmt"
 	"go.mkw.re/ghidra-panel/common"
 	"golang.org/x/crypto/argon2"
 )
+
+// ErrUserNotFound is returned when updating an account that does not exist.
+var ErrUserNotFound = errors.New("user not found")
 
 func (d *DB) GetUserState(ctx context.Context, ident *common.Identity) (*common.UserState, error) {
 	hasPass := true
 	username := ident.Username
 	err := d.
-		QueryRowContext(ctx, "SELECT username FROM passwords WHERE id = ?", ident.ID).
+		QueryRowContext(ctx, d.rebind("SELECT username FROM passwords WHERE id = ?"), ident.ID).
 		Scan(&username)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -31,7 +33,7 @@ func (d *DB) GetUserState(ctx context.Context, ident *common.Identity) (*common.
 
 func (d *DB) UsernameExists(ctx context.Context, username string) (exist bool, err error) {
 	err = d.
-		QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM passwords WHERE username = ?)", username).
+		QueryRowContext(ctx, d.rebind("SELECT EXISTS(SELECT 1 FROM passwords WHERE username = ?)"), username).
 		Scan(&exist)
 	return
 }
@@ -47,7 +49,7 @@ func (d *DB) CreateAccount(ctx context.Context, id uint64, username string, pass
 
 	_, err := d.ExecContext(
 		ctx,
-		`INSERT INTO passwords (id, username, hash, salt, format) VALUES (?, ?, ?, ?, ?)`,
+		d.rebind(`INSERT INTO passwords (id, username, hash, salt, format) VALUES (?, ?, ?, ?, ?)`),
 		id, username, hash, salt[:], 1,
 	)
 	return err
@@ -64,12 +66,12 @@ func (d *DB) UpdatePassword(ctx context.Context, id uint64, password string) err
 
 	result, err := d.ExecContext(
 		ctx,
-		`UPDATE passwords SET 
+		d.rebind(`UPDATE passwords SET 
 			hash = ?,
 			salt = ?,
 			format = ?,
 			updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?`,
+		WHERE id = ?`),
 		hash, salt[:], 1, id,
 	)
 
@@ -78,7 +80,7 @@ func (d *DB) UpdatePassword(ctx context.Context, id uint64, password string) err
 	}
 
 	if rows, _ := result.RowsAffected(); rows == 0 {
-		return fmt.Errorf("user not found")
+		return ErrUserNotFound
 	}
 	return nil
 }
@@ -94,13 +96,13 @@ func (d *DB) UpdateAccount(ctx context.Context, id uint64, username string, pass
 
 	result, err := d.ExecContext(
 		ctx,
-		`UPDATE passwords SET 
+		d.rebind(`UPDATE passwords SET 
 			username = ?,
 			hash = ?,
 			salt = ?,
 			format = ?,
 			updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?`,
+		WHERE id = ?`),
 		username, hash, salt[:], 1, id,
 	)
 
@@ -109,7 +111,7 @@ func (d *DB) UpdateAccount(ctx context.Context, id uint64, username string, pass
 	}
 
 	if rows, _ := result.RowsAffected(); rows == 0 {
-		return fmt.Errorf("user not found")
+		return ErrUserNotFound
 	}
 	return nil
 }
@@ -117,7 +119,7 @@ func (d *DB) UpdateAccount(ctx context.Context, id uint64, username string, pass
 func (d *DB) SetUsername(ctx context.Context, id uint64, username string) error {
 	_, err := d.ExecContext(
 		ctx,
-		`UPDATE passwords SET username = ? WHERE id = ?`,
+		d.rebind(`UPDATE passwords SET username = ? WHERE id = ?`),
 		username, id,
 	)
 	return err

@@ -47,11 +47,13 @@ dependencies {
     // Ghidra
     compileOnly fileTree(dir: ghidraDir + '/Framework', include: '**/*.jar')
     compileOnly fileTree(dir: ghidraDir + '/Features', include: '**/*.jar')
-    compileOnly fileTree(dir: ghidraDir + '/Debug', include: '**/*.jar')
-    compileOnly fileTree(dir: ghidraDir + '/Processors', include: '**/*.jar')
+    // The login module needs Ghidra (and its log4j/bouncycastle) at runtime outside the server
+    testRuntimeOnly fileTree(dir: ghidraDir + '/Framework', include: '**/*.jar')
+    testRuntimeOnly fileTree(dir: ghidraDir + '/Features', include: '**/*.jar')
 
     // JDBC
     runtimeOnly 'org.xerial:sqlite-jdbc:3.42.0.0'
+    runtimeOnly 'org.postgresql:postgresql:42.7.4'
 
     // gRPC
     implementation "io.grpc:grpc-protobuf:${grpcVersion}"
@@ -80,6 +82,14 @@ sourceSets {
             srcDirs 'build/generated/source/proto/main/java'
         }
     }
+}
+
+// Authenticates SAMPLE_USER/SAMPLE_PASS against ../test.db via the JAAS login module
+tasks.register('integration', JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 're.mkw.srejaas.SampleAcn'
+    systemProperty 'java.security.auth.login.config', file('test.conf').path
+    workingDir = projectDir
 }
 
 jar {

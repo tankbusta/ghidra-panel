@@ -6,6 +6,13 @@ type Identity struct {
 	ID         uint64 `json:"id"`
 	Username   string `json:"username"`
 	AvatarHash string `json:"avatar"`
+	// OIDCSubject is set for users authenticated via OIDC instead of Discord.
+	OIDCSubject string `json:"oidc_sub,omitempty"`
+}
+
+// IsOIDC reports whether the identity was authenticated via OIDC.
+func (i *Identity) IsOIDC() bool {
+	return i.OIDCSubject != ""
 }
 
 type GhidraEndpoint struct {

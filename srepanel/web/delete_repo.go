@@ -4,7 +4,6 @@ import (
 	"go.mkw.re/ghidra-panel/ghidra"
 	"log"
 	"net/http"
-	"slices"
 )
 
 func (s *Server) handleDeleteRepo(wr http.ResponseWriter, req *http.Request) {
@@ -33,7 +32,7 @@ func (s *Server) handleDeleteRepo(wr http.ResponseWriter, req *http.Request) {
 	}
 
 	// Allow super admins to delete any repository
-	if !slices.Contains(s.Config.SuperAdmins, ident.ID) {
+	if !s.isSuperAdmin(ident) {
 		// Fetch user state from the database and Ghidra
 		result, err := s.fetchUserPermission(req, ident, repo)
 		if err != nil {

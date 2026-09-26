@@ -6,36 +6,66 @@ import (
 	"errors"
 	"fmt"
 	"github.com/golang-migrate/migrate/v4"
-	"github.com/golang-migrate/migrate/v4/database/sqlite3"
+	"github.com/golang-migrate/migrate/v4/database"
+	migratepgx "github.com/golang-migrate/migrate/v4/database/pgx/v5"
+	"github.com/golang-migrate/migrate/v4/database/sqlite"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"log"
+	_ "modernc.org/sqlite"
+	"strconv"
+	"strings"
 )
 
-//go:embed migrations/*.sql
+//go:embed migrations/sqlite/*.sql migrations/postgres/*.sql
 var fs embed.FS
 
 type DB struct {
 	*sql.DB
+	postgres bool
 }
 
-func Open(filePath string) (*DB, error) {
-	// Initialize the database
-	db, err := sql.Open("sqlite3", filePath+"?_journal_mode=WAL")
+// IsPostgres reports whether dsn refers to a PostgreSQL database
+// rather than a SQLite file path.
+func IsPostgres(dsn string) bool {
+	return strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://")
+}
+
+// Open opens a PostgreSQL database if dsn is a postgres:// URL,
+// otherwise a SQLite database at the file path dsn.
+func Open(dsn string) (*DB, error) {
+	var (
+		db      *sql.DB
+		dialect string
+		err     error
+	)
+	postgres := IsPostgres(dsn)
+	if postgres {
+		dialect = "postgres"
+		db, err = sql.Open("pgx", dsn)
+	} else {
+		dialect = "sqlite"
+		db, err = sql.Open("sqlite", dsn+"?_pragma=journal_mode(WAL)")
+	}
 	if err != nil {
 		return nil, err
 	}
 
 	// Initialize migrations
-	source, err := iofs.New(fs, "migrations")
+	source, err := iofs.New(fs, "migrations/"+dialect)
 	if err != nil {
 		return nil, fmt.Errorf("migrate iofs source failed: %w", err)
 	}
-	driver, err := sqlite3.WithInstance(db, &sqlite3.Config{})
-	if err != nil {
-		return nil, fmt.Errorf("migrate sqlite3 driver failed: %w", err)
+	var driver database.Driver
+	if postgres {
+		driver, err = migratepgx.WithInstance(db, &migratepgx.Config{})
+	} else {
+		driver, err = sqlite.WithInstance(db, &sqlite.Config{})
 	}
-	m, err := migrate.NewWithInstance("iofs", source, "sqlite3", driver)
+	if err != nil {
+		return nil, fmt.Errorf("migrate %s driver failed: %w", dialect, err)
+	}
+	m, err := migrate.NewWithInstance("iofs", source, dialect, driver)
 	if err != nil {
 		return nil, fmt.Errorf("migrate creation failed: %w", err)
 	}
@@ -60,5 +90,25 @@ func Open(filePath string) (*DB, error) {
 		return nil, fmt.Errorf("database migrations failed: %w", err)
 	}
 
-	return &DB{db}, nil
+	return &DB{DB: db, postgres: postgres}, nil
+}
+
+// rebind converts ? placeholders to the $N form expected by PostgreSQL.
+// Queries must not contain literal question marks.
+func (d *DB) rebind(query string) string {
+	if !d.postgres {
+		return query
+	}
+	var b strings.Builder
+	n := 0
+	for _, c := range query {
+		if c == '?' {
+			n++
+			b.WriteByte('$')
+			b.WriteString(strconv.Itoa(n))
+		} else {
+			b.WriteRune(c)
+		}
+	}
+	return b.String()
 }
