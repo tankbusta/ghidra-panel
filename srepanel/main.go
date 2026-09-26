@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -26,12 +27,12 @@ func main() {
 		switch os.Args[1] {
 		case "rename":
 			os.Args = os.Args[1:]
-			dbPath := flag.String("db", "ghidra_panel.db", "path to database file")
+			dbPath := flag.String("db", defaultDatabase, "SQLite database file path or postgres:// URL (supports $env:NAME)")
 			argUserID := flag.Uint64("user-id", 0, "ID of user to rename")
 			argUser := flag.String("user", "", "new username")
 			flag.Parse()
 
-			db, err := database.Open(*dbPath)
+			db, err := openDatabase(*dbPath)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -43,7 +44,7 @@ func main() {
 			return
 		case "set-password":
 			os.Args = os.Args[1:]
-			dbPath := flag.String("db", "ghidra_panel.db", "path to database file")
+			dbPath := flag.String("db", defaultDatabase, "SQLite database file path or postgres:// URL (supports $env:NAME)")
 			argUserID := flag.Uint64("user-id", 0, "user id to set password for")
 			argUser := flag.String("user", "", "user to set password for")
 			argPass := flag.String("pass", "", "password to set")
@@ -56,7 +57,7 @@ func main() {
 	// prod args
 	configPath := flag.String("config", "ghidra_panel.json", "path to config file")
 	secretsPath := flag.String("secrets", "ghidra_panel.secrets.json", "path to secrets file")
-	dbPath := flag.String("db", "ghidra_panel.db", "path to database file")
+	dbFlag := flag.String("db", "", "SQLite database file path or postgres:// URL (supports $env:NAME), overrides config \"database\" (default \""+defaultDatabase+"\")")
 	listen := flag.String("listen", ":8080", "listen address")
 	cmdInit := flag.Bool("init", false, "initialize database and exit")
 	dev := flag.Bool("dev", false, "enable development mode")
@@ -94,7 +95,11 @@ func main() {
 
 	// Open database
 
-	db, err := database.Open(*dbPath)
+	dsn, err := databaseDSN(*dbFlag, cfg.Database)
+	if err != nil {
+		log.Fatal("database: ", err)
+	}
+	db, err := database.Open(dsn)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -200,8 +205,17 @@ func main() {
 	log.Println("Server stopped gracefully")
 }
 
+// openDatabase opens the database given by a subcommand's -db flag.
+func openDatabase(dbFlag string) (*database.DB, error) {
+	dsn, err := databaseDSN(dbFlag, "")
+	if err != nil {
+		return nil, fmt.Errorf("database: %w", err)
+	}
+	return database.Open(dsn)
+}
+
 func updateAccount(dbPath string, userID uint64, user, pass string) {
-	db, err := database.Open(dbPath)
+	db, err := openDatabase(dbPath)
 	if err != nil {
 		log.Fatal(err)
 	}

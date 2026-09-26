@@ -15,6 +15,7 @@ This repository is not an official Ghidra project.
 `ghidra-panel` introduces the following components:
 
 - [SQLite database] storing hashed user credentials
+  (optionally [PostgreSQL](#postgresql))
 - [JAAS plugin] implementing a Ghidra authentication provider
 - [gRPC server] providing an API for the panel to interact with Ghidra
 - Web server, written in [Go]
@@ -101,8 +102,40 @@ The Discord `webhook_url` still delivers access request notifications, and the o
 
 Secret values can be loaded from the environment by prefixing the variable name with `$env:`,
 e.g. `"client_secret": "$env:OIDC_CLIENT_SECRET"`. The panel refuses to start if the variable is unset.
-This is supported for `discord.bot_token`, `discord.client_id`, `discord.client_secret`,
+This is supported for `database`, `discord.bot_token`, `discord.client_id`, `discord.client_secret`,
 `discord.webhook_url`, `oidc.issuer`, `oidc.client_id` and `oidc.client_secret`.
+
+## PostgreSQL
+
+SQLite is the default (`ghidra_panel.db`). To use PostgreSQL instead, set `database` in the config
+to a `postgres://` URL. Like other secrets, it can be read from the environment:
+
+```json
+{
+  "database": "$env:DATABASE_URL"
+}
+```
+
+The `-db` flag overrides the config value, and also accepts `$env:NAME`. The `rename` and
+`set-password` subcommands don't read the config, so pass them `-db` directly:
+
+```sh
+srepanel set-password -db '$env:DATABASE_URL' -user-id 42 -user alice -pass hunter2
+```
+
+Migrations run automatically on startup. Any [libpq connection parameter](https://pkg.go.dev/github.com/jackc/pgx/v5/pgconn#ParseConfig)
+is accepted, and the standard `PG*` environment variables (e.g. `PGPASSWORD`) are honored,
+which keeps the password out of the process list.
+
+The JAAS plugin reads the same `passwords` table, so point its `JDBC` option at the same database:
+
+```
+JDBC="jdbc:postgresql://db.example.com/ghidra_panel?user=ghidra_panel&password=...&sslmode=verify-full"
+```
+
+The plugin only needs `SELECT` on `passwords`.
+
+Existing SQLite data is not migrated automatically.
 
 ## Philosophy
 

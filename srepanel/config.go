@@ -11,7 +11,9 @@ import (
 
 type config struct {
 	BaseURL string `json:"base_url"`
-	Discord struct {
+	// Database is a SQLite file path or postgres:// URL.
+	Database string `json:"database"`
+	Discord  struct {
 		BotToken     string `json:"bot_token"`
 		ClientID     string `json:"client_id"`
 		ClientSecret string `json:"client_secret"`
@@ -89,6 +91,7 @@ const envPrefix = "$env:"
 // resolveEnv replaces secret values referencing environment variables.
 func (c *config) resolveEnv() error {
 	fields := map[string]*string{
+		"database":              &c.Database,
 		"discord.bot_token":     &c.Discord.BotToken,
 		"discord.client_id":     &c.Discord.ClientID,
 		"discord.client_secret": &c.Discord.ClientSecret,
@@ -98,15 +101,39 @@ func (c *config) resolveEnv() error {
 		"oidc.client_secret":    &c.OIDC.ClientSecret,
 	}
 	for key, field := range fields {
-		name, ok := strings.CutPrefix(*field, envPrefix)
-		if !ok {
-			continue
-		}
-		v, ok := os.LookupEnv(name)
-		if !ok {
-			return fmt.Errorf("%s: environment variable %s not set", key, name)
+		v, err := resolveEnvValue(*field)
+		if err != nil {
+			return fmt.Errorf("%s: %w", key, err)
 		}
 		*field = v
 	}
 	return nil
+}
+
+// resolveEnvValue returns the environment variable referenced by s,
+// or s itself if it has no envPrefix.
+func resolveEnvValue(s string) (string, error) {
+	name, ok := strings.CutPrefix(s, envPrefix)
+	if !ok {
+		return s, nil
+	}
+	v, ok := os.LookupEnv(name)
+	if !ok {
+		return "", fmt.Errorf("environment variable %s not set", name)
+	}
+	return v, nil
+}
+
+const defaultDatabase = "ghidra_panel.db"
+
+// databaseDSN picks the -db flag if set, then the config value, then the default.
+func databaseDSN(flagValue, configValue string) (string, error) {
+	switch {
+	case flagValue != "":
+		return resolveEnvValue(flagValue)
+	case configValue != "":
+		return configValue, nil
+	default:
+		return defaultDatabase, nil
+	}
 }

@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS passwords (
+	id BIGINT PRIMARY KEY,
+	username TEXT NOT NULL,
+	hash BYTEA NOT NULL,
+	salt BYTEA NOT NULL,
+	format SMALLINT NOT NULL,
+	updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_passwords_username ON passwords (username);

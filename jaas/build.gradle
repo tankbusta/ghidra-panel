@@ -50,6 +50,7 @@ dependencies {
 
     // JDBC
     runtimeOnly 'org.xerial:sqlite-jdbc:3.42.0.0'
+    runtimeOnly 'org.postgresql:postgresql:42.7.4'
 
     // gRPC
     implementation "io.grpc:grpc-protobuf:${grpcVersion}"

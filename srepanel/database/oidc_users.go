@@ -13,9 +13,9 @@ func (d *DB) GetOrCreateOIDCUserID(ctx context.Context, issuer, subject string) 
 	var rowID int64
 	err := d.
 		QueryRowContext(ctx,
-			`INSERT INTO oidc_users (issuer, subject) VALUES (?, ?)
+			d.rebind(`INSERT INTO oidc_users (issuer, subject) VALUES (?, ?)
 			ON CONFLICT (issuer, subject) DO UPDATE SET issuer = excluded.issuer
-			RETURNING id`,
+			RETURNING id`),
 			issuer, subject,
 		).
 		Scan(&rowID)

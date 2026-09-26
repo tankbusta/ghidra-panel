@@ -2,16 +2,14 @@ package database
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 )
 
 func TestGetOrCreateOIDCUserID(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+	forEachBackend(t, testGetOrCreateOIDCUserID)
+}
+
+func testGetOrCreateOIDCUserID(t *testing.T, db *DB) {
 	ctx := context.Background()
 
 	a, err := db.GetOrCreateOIDCUserID(ctx, "https://idp", "alice")
